@@ -1,0 +1,143 @@
+`define bit 8
+module top(input1,input2,answer,temp_res1);
+input [`bit-1:0] input1;
+input [`bit-1:0] input2;
+output [2*`bit-1:0] answer;
+output [2*`bit-1:0] temp_res1;
+
+wire [2*`bit-1:0] sum [(`bit/2)-2:0];
+wire [2*`bit-1:0] carry [(`bit/2)-2:0];
+wire [2*`bit-1:0] part_prod [`bit-1:0];
+wire [`bit-1:0] temp[`bit-1:0];
+wire [`bit/4-1:0] stage_cin;
+wire [2*`bit-1:0] temp_sum,temp_carry;
+wire procarry;
+
+
+genvar a;
+generate
+for(a=0;a<`bit;a=a+1)
+begin:partial_p
+assign temp[a]=input2[a]?input1:0;
+end
+endgenerate
+
+assign part_prod[0]={{`bit{1'b0}},temp[0]};
+
+genvar b;
+generate
+for(b=1;b<`bit;b=b+1)
+begin: shifting_partial_prod
+assign part_prod[b]={{`bit-b{1'b0}},temp[b],{b{1'b0}}};
+end
+endgenerate
+
+genvar c;
+generate
+for(c=0;c<`bit/4;c=c+1)
+begin:stage_1
+level_one_red  first(part_prod[4*c],part_prod[4*c+1],part_prod[4*c+2],part_prod[4*c+3],sum[c],carry[c]);
+end
+endgenerate
+
+carrypropagate call(part_prod[(`bit/2)-2],part_prod[(`bit/2)-1],part_prod[`bit-2],part_prod[`bit-1],procarry);
+
+assign stage_cin={{`bit/4-1{1'b0}},procarry};
+
+genvar d;
+generate
+for(d=0;d<(`bit/4)-1;d=d+1)
+begin:second_2
+level_two_red second(sum[2*d],sum[2*d+1],carry[2*d]<<1,carry[2*d+1]<<1,sum[(`bit/4)+d],carry[(`bit/4)+d],stage_cin[d]);
+end
+endgenerate
+
+assign temp_sum=sum[(`bit/2)-2];
+assign temp_carry=carry[(`bit/2)-2];
+
+cpa instance3(answer,temp_sum,temp_carry<<1);
+
+assign temp_res1=input1*input2;
+endmodule
+
+
+module carrypropagate(partial1,partial2,partial3,partial4,procarry);
+input [2*`bit-1:0] partial1,partial2,partial3,partial4;
+output procarry;
+assign procarry=(partial1[`bit-1]&partial2[`bit-1]) | (partial3[`bit-1]&partial4[`bit-1]);
+endmodule
+
+module level_one_red (p1,p2,p3,p4,sum1,carry1);
+input [2*`bit-1:0] p1,p2,p3,p4;
+output [2*`bit-1:0] sum1,carry1;
+wire [2*`bit:0] cout1;
+assign cout1[0]=0;
+genvar e;
+generate
+for(e=0;e<`bit;e=e+1)
+begin:first
+approx approx_call1(p1[e],p2[e],p3[e],p4[e],sum1[e],carry1[e]);
+end
+endgenerate
+
+genvar j;
+generate
+for(j=`bit;j<2*`bit;j=j+1)
+begin:second
+accurate accurate_call1(p1[j],p2[j],p3[j],p4[j],cout1[j-`bit],sum1[j],carry1[j],cout1[j+1-`bit]);
+end
+endgenerate
+
+endmodule
+
+
+module level_two_red(sum2,sum3,carry2,carry3,sum4,carry4,stage_cin);
+input [2*`bit-1:0] sum2,sum3,carry2,carry3;
+input stage_cin;
+output [2*`bit-1:0] sum4,carry4;
+wire [2*`bit:0] cout;
+
+assign cout[0]=stage_cin;
+
+genvar i;
+generate
+for(i=0;i<`bit;i=i+1)
+begin:first
+approx approx_call1(sum2[i],sum3[i],carry2[i],carry3[i],sum4[i],carry4[i]);
+end
+endgenerate
+
+genvar l;
+generate
+for(l=`bit;l<2*`bit;l=l+1)
+begin:second
+accurate accurate_call3(sum2[l],carry2[l],sum3[l],carry3[l],cout[l-`bit],sum4[l],carry4[l],cout[l+1-`bit]);
+end
+endgenerate
+
+endmodule
+
+
+module approx(x1,x2,x3,x4,app_sum,app_carry);
+input x1,x2,x3,x4;
+output app_sum,app_carry;
+assign app_sum=(x1^x2)^(x3|x4);
+assign app_carry= (x1&x2) | (x1&x3) |(x1&x4) |(x2&x3) |(x2&x4);
+endmodule
+
+
+module accurate(a1,a2,a3,a4,a5,acc_sum,acc_carry,acc_cout);
+input a1,a2,a3,a4,a5;
+output acc_sum,acc_carry,acc_cout;
+assign acc_sum=(a1^a2)^(a3^a4^a5);
+assign acc_cout=((a1^a2)&a3) | ((~(a1^a2))&a1);
+assign acc_carry=((a1^a2^a3^a4)&a5) | ((~(a1^a2^a3^a4))&a4);
+endmodule
+
+
+module cpa(fsum,psum,pcarry);
+output [2*`bit-1:0] fsum;
+input [2*`bit-1:0] psum;
+input [2*`bit-1:0] pcarry;
+assign fsum= psum+pcarry;
+endmodule

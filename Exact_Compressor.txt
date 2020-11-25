@@ -1,0 +1,117 @@
+`define bit 16
+module main_module(input1,input2,answer);
+input [`bit-1:0] input1;
+input [`bit-1:0] input2;
+output [2*`bit-1:0] answer;
+wire [2*`bit-1:0] part_prod[`bit-1:0];
+wire [`bit-1:0] temp[`bit-1:0];
+wire [2*`bit-1:0] sum [(`bit/2)-2:0];
+wire [2*`bit-1:0] carry [(`bit/2)-2:0];
+wire [2*`bit-1:0] temp_sum,temp_carry;
+
+
+genvar a;
+generate
+for(a=0;a<`bit;a=a+1)
+begin:partial_prod
+assign temp[a]=input2[a]?input1:0;
+end
+endgenerate
+
+assign part_prod[0]={{`bit{1'b0}},temp[0]};
+
+genvar b;
+generate
+for(b=1;b<`bit;b=b+1)
+begin:shifting_partial_prod
+assign part_prod[b]={{`bit-b{1'b0}},temp[b],{b{1'b0}}};
+end
+endgenerate
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+genvar c;
+generate
+for(c=0;c<`bit/4;c=c+1)
+begin:stage_1
+level_one_red p1(part_prod[4*c],part_prod[4*c+1],part_prod[4*c+2],part_prod[4*c+3],sum[c],carry[c]);
+end
+endgenerate
+
+genvar d;
+generate
+for(d=0;d<(`bit/4)-1;d=d+1)
+begin:second_2
+level_two_red p2(sum[2*d],sum[2*d+1],carry[2*d]<<1,carry[2*d+1]<<1,sum[(`bit/4)+d],carry[(`bit/4)+d]);
+end
+endgenerate
+
+
+assign temp_sum=sum[(`bit/2)-2];
+assign temp_carry=carry[(`bit/2)-2];
+
+adder p3(answer,temp_sum,temp_carry<<1);
+
+endmodule
+
+/////////////////////////////////////////////////////////////////////////////
+
+
+/////////////////////////////////////////////////////////////////////////////
+
+module adder(op_sum,ip_sum,ip_carry);
+output [2*`bit-1:0] op_sum;
+input [2*`bit-1:0] ip_sum;
+input [2*`bit-1:0] ip_carry;
+assign op_sum= ip_sum+ip_carry;
+endmodule
+
+/////////////////////////////////////////////////////////////////////////////
+
+
+/////////////////////////////////////////////////////////////////////////////
+
+module level_two_red (sum2,sum3,carry2,carry3,sum4,carry4);
+input [2*`bit-1:0] sum2,sum3,carry2,carry3;
+output [2*`bit-1:0] sum4,carry4;
+wire [2*`bit:0] cout;
+assign cout[0]=0;
+genvar l;
+generate
+for(l=0;l<2*`bit;l=l+1)
+begin:second
+exact_logic p4(sum2[l],carry2[l],sum3[l],carry3[l],cout[l],sum4[l],carry4[l],cout[l+1]);
+end
+endgenerate
+endmodule
+
+/////////////////////////////////////////////////////////////////////////////
+
+
+/////////////////////////////////////////////////////////////////////////////
+module level_one_red(p1,p2,p3,p4,sum1,carry1);
+input [2*`bit-1:0] p1,p2,p3,p4;
+output [2*`bit-1:0] sum1,carry1;
+wire [2*`bit:0] cout1;
+assign cout1[0]=0;
+genvar j;
+generate
+for(j=0;j<2*`bit;j=j+1)
+begin:second
+exact_logic p5(p1[j],p2[j],p3[j],p4[j],cout1[j],sum1[j],carry1[j],cout1[j+1]);
+end
+endgenerate
+endmodule
+
+/////////////////////////////////////////////////////////////////////////////
+
+
+/////////////////////////////////////////////////////////////////////////////
+module exact_logic(a1,a2,a3,a4,a5,acc_sum,acc_carry,acc_cout);
+input a1,a2,a3,a4,a5;
+output acc_sum,acc_carry,acc_cout;
+assign acc_sum=(a1^a2)^(a3^a4^a5);
+assign acc_cout=((a1^a2)&a3) | ((~(a1^a2))&a1);
+assign acc_carry=((a1^a2^a3^a4)&a5) | ((~(a1^a2^a3^a4))&a4);
+endmodule
+
